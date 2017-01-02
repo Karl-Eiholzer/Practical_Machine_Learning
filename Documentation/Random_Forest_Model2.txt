@@ -1,0 +1,82 @@
+##################################################### 
+# This is a Log Capturing the Simplified Random Forest Tree Results
+# Created:  Mon Jan  2 08:25:33 2017 
+##################################################### 
+ 
+ 
+
+Confusion Matrix and Statistics
+
+          Reference
+Prediction   A   B   C   D   E
+         A 499   0   0   0   0
+         B   0 347   1   0   0
+         C   0   0 316   1   0
+         D   0   0   0 299   0
+         E   0   0   0   0 344
+
+Overall Statistics
+                                         
+               Accuracy : 0.9989         
+                 95% CI : (0.996, 0.9999)
+    No Information Rate : 0.2761         
+    P-Value [Acc > NIR] : < 2.2e-16      
+                                         
+                  Kappa : 0.9986         
+ Mcnemar's Test P-Value : NA             
+
+Statistics by Class:
+
+                     Class: A Class: B Class: C Class: D Class: E
+Sensitivity            1.0000   1.0000   0.9968   0.9967   1.0000
+Specificity            1.0000   0.9993   0.9993   1.0000   1.0000
+Pos Pred Value         1.0000   0.9971   0.9968   1.0000   1.0000
+Neg Pred Value         1.0000   1.0000   0.9993   0.9993   1.0000
+Prevalence             0.2761   0.1920   0.1754   0.1660   0.1904
+Detection Rate         0.2761   0.1920   0.1749   0.1655   0.1904
+Detection Prevalence   0.2761   0.1926   0.1754   0.1655   0.1904
+Balanced Accuracy      1.0000   0.9997   0.9981   0.9983   1.0000
+ 
+
+ 
+
+                         A         B         C         D         E
+num_window       31.361124 37.561341 44.682921 32.721379 21.793081
+roll_belt        17.219486 18.678343 21.290510 19.924290 17.445971
+pitch_belt       20.887441 20.632304 18.189963 17.307170 16.336910
+yaw_belt         16.281578 21.135192 17.641623 27.270936 15.397867
+total_accel_belt  8.137787  7.815665  6.274316  8.234807  7.489202
+gyros_belt_x     12.311223 10.787975 14.091696 10.619257 13.924750
+gyros_belt_y      6.860335  8.282067  8.535046  8.610661  9.379573
+gyros_belt_z     12.242936 10.992555 12.326802 10.812217 10.498117
+accel_belt_x     10.673199 10.487307 12.052757  8.749628 12.620318
+accel_belt_y      7.818817  7.701176  7.169086  8.541795  6.048712
+accel_belt_z     11.259712  9.816876 13.752961 12.496770 11.501801
+magnet_belt_x    11.070942 12.467056 14.485769 12.519904 14.898076
+magnet_belt_y    12.102507 10.831155 12.788134 15.003102 13.038608
+magnet_belt_z    13.911470 15.311670 16.837849 18.751685 12.188533
+roll_arm         18.463348 15.898673 15.308792 19.813159 15.911326
+                 MeanDecreaseAccuracy MeanDecreaseGini
+num_window                  38.953899        6308.4931
+roll_belt                   22.907072        2756.5043
+pitch_belt                  23.240817        2112.7697
+yaw_belt                    24.488686        2473.3230
+total_accel_belt             9.201700         375.1985
+gyros_belt_x                17.694883         365.8504
+gyros_belt_y                10.931989         267.9115
+gyros_belt_z                13.472726         643.4181
+accel_belt_x                13.483021         539.0120
+accel_belt_y                 8.942374         396.6869
+accel_belt_z                13.737058        1025.0580
+magnet_belt_x               13.941318        1065.3088
+magnet_belt_y               14.615295         892.6668
+magnet_belt_z               19.179077        1024.3218
+roll_arm                    22.106129        1474.0091
+ 
+
+ 
+
+
+ 
+
+

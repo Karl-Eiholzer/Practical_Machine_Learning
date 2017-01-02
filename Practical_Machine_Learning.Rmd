@@ -1,0 +1,333 @@
+---
+title: "Coursera Peer Reviewed Project - Practical Machine Learning Week 4 - Using accelerometers to predict if exercise is being performed correctly"
+author: Karl Eiholzer
+date: 31 December 2016
+output:
+  html_document:
+    keep_md: true
+---
+<h5 id="TOC">Table of Contents</h5>
+<ul>
+<li><a href="#Overview">Executive Summary</a></li>
+<li><a href="#Prelims">Preliminary Steps</a>
+<li><a href="#Step1">Exploratory Data Analysis</a>
+<li><a href="#Step2">Data Cleaning</a>
+<li><a href="#Step3">Fitting Multiple Prediction Models</a>
+<li><a href="#Step4">Simplifying the Random Forest Model</a>
+<li><a href="#Step5">Conclusions</a>
+<li><a href="#App1">Appendix 1: Timestamps and Data</a>
+<li><a href="#App2">Appendix 2: Random Forest Data</a>
+<li><a href="#App2">Appendix 3: Simplified Random Forest Data</a>
+<li><a href="#SysVers">System and Version Information</a>
+</ul></li>
+<h3 id="Overview">Executive Summary</h3>
+<p align="right">Skip to <a href="#top">Top</a> or <a href="#Prelims">next section</a></p>
+
+The goal of the project is to predict if a person is exercising correctly based on accelerometer measurements:<br>
+<li>Lorem ipsum dolor sit amet, consectetur adipiscing elit. </li>
+<li>Lorem ipsum dolor sit amet, consectetur adipiscing elit. </li>
+<br>
+<h5 id="Prelims">Preliminaries: load libraries we will be using</h5>
+<p align="right">Skip to <a href="#Overview">prior section</a> or <a href="#Step1">next section</a></p></p>
+Loading ggplot2 and caret packages, setting seed and loading in the data files.
+
+```{r Library Settings, cache=FALSE, echo = FALSE}
+suppressMessages(require(ggplot2) )
+suppressMessages(require(caret))
+suppressMessages(require(plyr))
+suppressMessages(require(randomForest))
+suppressMessages(require(class))
+
+set.seed(102767)
+
+TrainingSetUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestSetUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+raw.training <- read.csv(TrainingSetUrl, na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(TestSetUrl, na.strings=c("NA","#DIV/0!",""))
+```
+
+<h3 id="Step1">Exploratory Data Analysis</h3>
+<p align="right">Skip to <a href="#Prelims">prior section</a> or <a href="#Step2">next section</a></p>
+
+The data comes from six test subjects (adelmo, carlitos, charles, eurico, jeremy, and pedro) engaged in five activities (labelled A thru E). As described by the original authors:
+"Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg)." Accerlometer measurements were captured as the participants exercised.
+[Read more: http://groupware.les.inf.puc-rio.br/har#ixzz4TZMpuEj6]
+<br>
+
+We see a well distributed number of observations for each person for each activity, from 469 to 1,177: 
+```{r Step 1b, cache=FALSE, echo = TRUE}
+with(raw.training, table(classe, user_name))
+```
+
+Many of the columns appear to be mostly comprised of NA values. The distribution of columns with high rates of NA values suggests on 59 columns are useful as predictors: 
+
+```{r Step 1c, cache=FALSE, echo = TRUE}
+NA.rates <- cbind(Column = names(raw.training), Percent.NA = 0, High.NAs = FALSE)
+y <- nrow(raw.training)
+for(i in 1:length(raw.training) ) 
+  { x <-  round( sum( is.na( raw.training[, i] ) ) / y * 100 , digits = 0 )
+    NA.rates[i , 2 ] <- x
+    if (x > 95) 
+      { NA.rates[i , 3 ] <- TRUE
+      }
+}
+table(NA.rates[,2])
+```
+Of the 60 columns contain zero NA values, while 100 columns contain 98 or 100 percent NA values. 
+
+Also we see that the training data is organized by timestamp. The individuals worked through the various activities from A to E in order each time. Given that we would not normally have access to that information when predicting the activity, we want to build a model that is not dependent on timestamps. Finally we also see that the data is ordered by row number ("X"), which we would also not expect to occur in a normal environment:<br>
+
+```{r Print Graphs Showing Timestampe Relationships, cache=FALSE, echo = FALSE}
+# boxplot(X ~ classe, data=raw.training)
+h <- ggplot(raw.training, aes(cvtd_timestamp, classe, colour = user_name)) +
+     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+     geom_jitter()
+h
+```
+
+See <a href="#App1">Appendix 1</a> for more data on this topic.
+
+```{r Write App 1 Log, cache=FALSE, echo = FALSE}
+# This captures the information about the raw data for analysis later if needed
+
+ifelse(!dir.exists("Documentation"), dir.create("Documentation"), FALSE)
+off.write <- file("Documentation/Exercise_Timestamp_data.txt",
+                  open="wt"    )
+cat("#####################################################", "\n", file = off.write)
+cat("# This is a Log Decsribing Relationships between timestamps and users in the data", file = off.write, sep = "\n")
+cat("# Created: ", date(),  "\n", file = off.write)
+cat("#####################################################", "\n", "\n", file = off.write)
+
+out_struct <- capture.output(with(raw.training, table(cvtd_timestamp, classe, user_name)))
+cat( " \n", out_struct, " \n", file = off.write, sep = "\n")
+
+cat("\n", file = off.write)
+close(off.write)
+rm(off.write)
+rm(out_struct)
+```
+
+<h3 id="Step2">Data Cleaning</h3>
+<p align="right">Skip to <a href="#Step1">prior section</a> or <a href="#Step3">next section</a></p>
+
+I'll remove the columns that contain mostly NA values and also any columns with near zero variance:
+```{r Step 2a, cache=FALSE, echo = TRUE}
+sig.training <- raw.training
+for(i in 1:length(raw.training)) 
+    { if( sum( is.na( raw.training[, i] ) ) /nrow(raw.training) >= .95) 
+      { for(j in 1:length(sig.training)) 
+        { if( length( grep(names(raw.training[i]), names(sig.training)[j]) ) == 1)  
+          { sig.training <- sig.training[ , -j]
+          }   
+        } 
+      }
+    }
+
+col.no <- which(names(sig.training)=="classe")
+nzv <- nearZeroVar(sig.training[, -col.no], 
+                  freqCut = 99/1, 
+                  uniqueCut = 5,
+                  saveMetrics=TRUE)
+nzv.training <- sig.training[,nzv$nzv==FALSE]
+
+dim(nzv.training)
+```
+
+The near zero variance test does not remove any columns, indicating that any of the remaining columns may be useful for prediction.<br>
+
+Lastly we will remove the user names and timestamp columns, as I believe they will not be useful for prediction. I also shuffle the rows randomly to assist with sampling techniques when fitting and cross validating. 
+
+```{r Step 2b, cache=TRUE, echo = TRUE}
+col.no <- which(names(nzv.training)%in%c("user_name","new_window","X","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp"))
+clean.training <- nzv.training[, -col.no]
+clean.training <- clean.training[sample(nrow(clean.training)),]
+# Clean up the objects
+rm(nzv.training)
+rm(sig.training)
+```
+
+<br>
+<h3 id="Step3">Fitting a Random Forest Prediction Models</h3>
+<p align="right">Skip to <a href="#Step2">prior section</a> or <a href="#Step4">next section</a></p>
+
+After testing kNN, gbm and random forest models, I found the highest accuracy useing random forest. First I train a model using all available predictors.
+<br>
+
+I start by creating separate training and validation stes:
+```{r Step 3a, cache=FALSE, echo = TRUE}
+set.seed(102767)
+TrainIndex <- createDataPartition(clean.training$classe, 
+                                  p = .7,        
+                                  list = FALSE,  
+                                  times = 2)     
+Training <- clean.training[TrainIndex,]
+Validation <- clean.training[-TrainIndex,]
+```
+
+Due to mimitation of the machine I am using, I will run 100 trees, instead of the recomended 400 or more.
+
+```{r Fit random forest model, cache=FALSE, echo = FALSE}
+set.seed(102767)
+# Fit and Random Forest Model
+rf.fit <- randomForest(classe ~ ., 
+                       data = Training,
+                       ntree=100,
+                       importance = TRUE,
+                       proximity = TRUE  )
+rf.result <- predict(rf.fit, Validation)
+```
+
+Full informatiomn about the random forest fit may be found in  <a href="#App2">Appendix 2</a> :
+```{r Write log describing random forest prediction model, cache=FALSE, echo = FALSE}
+
+# This captures the information about the raw data for analysis later if needed
+
+ifelse(!dir.exists("Documentation"), dir.create("Documentation"), FALSE)
+off.write <- file("Documentation/Random_Forest_Model.txt",
+                  open="wt"    )
+cat("#####################################################", "\n", file = off.write)
+cat("# This is a Log Capturing the Random Forest Tree Results", file = off.write, sep = "\n")
+cat("# Created: ", date(),  "\n", file = off.write)
+cat("#####################################################", "\n", "\n", file = off.write)
+
+out_struct <- capture.output(importance(rf.fit))
+cat( " \n", out_struct, " \n", file = off.write, sep = "\n")
+
+out_struct <- capture.output(varImpPlot(rf.fit))
+cat( " \n", out_struct, " \n", file = off.write, sep = "\n")
+
+cat("\n", file = off.write)
+close(off.write)
+rm(off.write)
+rm(out_struct)
+```
+
+This analysis identifies the most important variables for predicting which class of acticiy the exerciser was engaged in:
+```{r Step 3f, cache=FALSE, echo = TRUE}
+rownames(importance(rf.fit)[1:25,0])
+```
+My next goal will be to create a simpler model with just those predictors.
+
+
+<br>
+<h3 id="Step4">Simplifying the Random Forest Model</h3>
+<p align="right">Skip to <a href="#Step2">prior section</a> or <a href="#Step4">next section</a></p>
+
+After testing a few smaller sets of predictors, I found that 15 variables would still achieve over 99% accuracy. I also found that accuracy improvements were not found after more than 60 trees. This allows me to run a more simplified version of the model:
+```{r Step 4a, cache=FALSE, echo = TRUE}
+set.seed(102767)
+key.var <- rownames(importance(rf.fit)[1:15,0])
+rf.fit2 <- randomForest(classe ~ ., 
+                       data = Training[,c("classe",key.var)],
+                       ntree=60,
+                       importance = TRUE,
+                       proximity = TRUE  )
+rf.result2 <- predict(rf.fit2, Validation[,c("classe",key.var)])
+```
+
+Full informatiomn about the simplified model may be found in  <a href="#App2">Appendix 3</a> :
+```{r Write log describing simplified random forest prediction model, cache=FALSE, echo = FALSE}
+
+# This captures the information about the raw data for analysis later if needed
+
+ifelse(!dir.exists("Documentation"), dir.create("Documentation"), FALSE)
+off.write <- file("Documentation/Random_Forest_Model2.txt",
+                  open="wt"    )
+cat("#####################################################", "\n", file = off.write)
+cat("# This is a Log Capturing the Simplified Random Forest Tree Results", file = off.write, sep = "\n")
+cat("# Created: ", date(),  "\n", file = off.write)
+cat("#####################################################", "\n", "\n", file = off.write)
+
+out_struct1 <- capture.output(confusionMatrix(Validation$classe, rf.result2))
+cat( " \n", out_struct1, " \n", file = off.write, sep = "\n")
+
+out_struct2 <- capture.output(importance(rf.fit2))
+cat( " \n", out_struct2, " \n", file = off.write, sep = "\n")
+
+out_struct3 <- capture.output(varImpPlot(rf.fit2))
+cat( " \n", out_struct3, " \n", file = off.write, sep = "\n")
+
+cat("\n", file = off.write)
+close(off.write)
+rm(off.write)
+rm(out_struct1)
+rm(out_struct2)
+rm(out_struct3)
+```
+
+
+<h3 id="Step5">Conclusions</h3>
+<p align="right">Skip to <a href="#Step3">prior section</a> or <a href="#SysVers">next section</a></p>
+
+To confirm that the simplified model is as effective as the original full model, we can test both models against the testing data. :
+
+```{r Step 5a, cache=FALSE, echo = TRUE}
+# make columns identical between training and testing sets
+col.no <- which(names(testing)%in%as.vector(colnames(Training)))
+final.testing1 <- testing[,col.no]
+# make columns identical between training and testing sets
+col.no <- which(names(testing)%in%as.vector(c("classe",key.var)))
+final.testing2 <- testing[,col.no]
+# predict results
+final.result1 <- predict(rf.fit,  newdata = final.testing1)
+final.result2 <- predict(rf.fit2, newdata = final.testing2)
+```
+
+A confusion matrix shows that both models return the same results:
+```{r Step 5b, cache=FALSE, echo = TRUE}
+confusionMatrix(final.result1, final.result2)$table
+```
+
+Using the simplified model, the final predictions for the test set are as follows:
+```{r Step 5c, cache=FALSE, echo = TRUE}
+final.result2
+```
+
+<br>
+<h4 id="App1">Appendix 1: Timestamps and Data</h4>
+
+```{r Step A1, cache=FALSE, echo = TRUE}
+con <- file("Documentation/Exercise_Timestamp_data.txt", "r", blocking = FALSE)
+readLines("Documentation/Exercise_Timestamp_data.txt")
+close(con)
+```
+
+
+<br>
+
+<br>
+<h4 id="App2">Appendix 2: Log of Random Forest Model Data</h4>
+
+```{r Step A2, cache=FALSE, echo = TRUE}
+con <- file("Documentation/Random_Forest_Model.txt", "r", blocking = FALSE)
+readLines("Documentation/Random_Forest_Model.txt")
+close(con)
+```
+
+<br>
+<h4 id="App3">Appendix 3: Log of Simplified Random Forest Model Data</h4>
+
+```{r Step A3, cache=FALSE, echo = TRUE}
+con <- file("Documentation/Random_Forest_Model2.txt", "r", blocking = FALSE)
+readLines("Documentation/Random_Forest_Model2.txt")
+close(con)
+```
+
+<br>
+<h4 id="SysVers">System and Version Infomation</h4>
+
+```{r Version and Machine Info, echo = FALSE}
+ assign("x",
+        R.Version(),
+        envir=.GlobalEnv )
+```
+
+| Code Origininally Executed on: | Value                 |
+| ------------------------------ |----------------------:|
+| R Version                      | `r x$version.string`  |
+| Operating System               | `r x$os`              |
+| Architecture                   | `r x$arch`            |
+
+<br>Return to <a href="#Top">top</a>.
+<p align="right">File created *`r date()`*</p> 
